@@ -3,45 +3,51 @@ const router = express.Router();
 const pool = require("../utils/db.config");
 const { Parser } = require("json2csv");
 
+// Helper: format a JS Date or DB timestamp string to "YYYY-MM-DD HH:mm"
+function formatTimestamp(value) {
+    const d = new Date(value);
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${MM}-${dd} ${hh}:${mm}`;
+}
+
 // GET /passAnalysis/:stationOpID/:tagOpID/:date_from/:date_to
 router.get("/passAnalysis/:stationOpID?/:tagOpID?/:date_from?/:date_to?", async (req, res) => {
     const { stationOpID, tagOpID, date_from, date_to } = req.params;
-    const format = req.query.format || "json"; // Default format is JSON
-    const requestTimestamp = new Date().toISOString();
+    const format = req.query.format || "json";
+    const requestTimestamp = formatTimestamp(new Date());
 
-    // 🛑 Validate input: If any parameter is missing, return 400 Bad Request
+    // Validate input
     if (!stationOpID || !tagOpID || !date_from || !date_to) {
         return res.status(400).json({ error: "Bad Request", message: "Missing required parameters." });
     }
 
-    // 🛑 Validate date format (YYYYMMDD)
     const dateRegex = /^\d{8}$/;
     if (!dateRegex.test(date_from) || !dateRegex.test(date_to)) {
         return res.status(400).json({ error: "Bad Request", message: "Invalid date format. Use YYYYMMDD." });
     }
 
-    // Convert dates to SQL-compatible format
     const startDate = `${date_from.substring(0, 4)}-${date_from.substring(4, 6)}-${date_from.substring(6, 8)} 00:00:00`;
     const endDate = `${date_to.substring(0, 4)}-${date_to.substring(4, 6)}-${date_to.substring(6, 8)} 23:59:59`;
 
     try {
-        // Validate stationOpID
+        // Validate stationOpID against tollcompanies
         const [stationOpCheck] = await pool.query(
-            `SELECT company_id FROM tollstations WHERE company_id = ?`,
+            `SELECT company_id FROM tollcompanies WHERE company_id = ?`,
             [stationOpID]
         );
-
-        // If stationOpID is invalid, return 400
         if (stationOpCheck.length === 0) {
             return res.status(400).json({ error: "Bad Request", message: "Station operator ID is invalid." });
         }
-        //Validate tagOpID
-        const[tagOpCheck] = await pool.query(
-            'SELECT company_id FROM vehicletags WHERE company_id = ?', 
+
+        // Validate tagOpID against tollcompanies
+        const [tagOpCheck] = await pool.query(
+            `SELECT company_id FROM tollcompanies WHERE company_id = ?`,
             [tagOpID]
         );
-
-        // If tagOpID is invalid, return 404 Not Found
         if (tagOpCheck.length === 0) {
             return res.status(400).json({ error: "Bad Request", message: "Tag operator ID is invalid." });
         }
@@ -61,42 +67,40 @@ router.get("/passAnalysis/:stationOpID?/:tagOpID?/:date_from?/:date_to?", async 
             [stationOpID, tagOpID, startDate, endDate]
         );
 
-        // ✅ 204 No Content if no records found
         if (results.length === 0) {
             return res.status(204).send();
         }
 
-        // ✅ 200 Success - Build response
+        const passList = results.map((row, index) => ({
+            passIndex: index + 1,
+            passID: row.pass_id,
+            stationID: row.station_id,
+            timestamp: formatTimestamp(row.timestamp),
+            tagID: row.tag_id,
+            passCharge: parseFloat(row.charge)
+        }));
+
         const response = {
             stationOpID: stationOpID,
             tagOpID: tagOpID,
             requestTimestamp: requestTimestamp,
-            periodFrom: startDate,
-            periodTo: endDate,
+            periodFrom: formatTimestamp(new Date(startDate)),
+            periodTo: formatTimestamp(new Date(endDate)),
             nPasses: results.length,
-            passList: results.map((row, index) => ({
-                passIndex: index + 1,
-                passID: row.pass_id,
-                stationID: row.station_id,
-                timestamp: row.timestamp,
-                tagID: row.tag_id,
-                passCharge: row.charge
-            }))
+            passList: passList
         };
 
-        // 📄 CSV Format Handling
         if (format === "csv") {
             const fields = ["passIndex", "passID", "stationID", "timestamp", "tagID", "passCharge"];
-            const opts = { fields };
-            const parser = new Parser(opts);
-            const csvData = parser.parse(response.passList);
-
+            const parser = new Parser({ fields });
+            const csvData = parser.parse(passList);
             res.header("Content-Type", "text/csv");
             res.attachment("passAnalysis.csv");
             return res.send(csvData);
         }
 
         res.json(response);
+
     } catch (err) {
         console.error("DB Error:", err);
         res.status(500).json({ error: "Internal Server Error", details: err.message });

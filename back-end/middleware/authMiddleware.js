@@ -14,8 +14,9 @@ const verifyToken = async (req, res, next) => {
             return res.status(401).json({ error: "Unauthorized: Invalid token" });
         }
 
-        req.user = rows[0].user_id; // Attach user ID to request
-        next(); // Proceed to the next middleware
+        req.user = rows[0].user_id;
+        next();
+
     } catch (error) {
         return res.status(500).json({ error: "Internal Server Error" });
     }

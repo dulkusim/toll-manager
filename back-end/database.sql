@@ -1,10 +1,3 @@
--- --------------------------------------------------------
--- Host:                         127.0.0.1
--- Server version:               10.4.32-MariaDB - mariadb.org binary distribution
--- Server OS:                    Win64
--- HeidiSQL Version:             12.6.0.6765
--- --------------------------------------------------------
-
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET NAMES utf8 */;
 /*!50503 SET NAMES utf8mb4 */;
@@ -14,43 +7,9 @@
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
-
--- Dumping database structure for tollmanager
 CREATE DATABASE IF NOT EXISTS `tollmanager` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */;
 USE `tollmanager`;
 
--- Dumping structure for table tollmanager.passes
-CREATE TABLE IF NOT EXISTS `passes` (
-  `pass_id` int(11) NOT NULL AUTO_INCREMENT,
-  `station_id` varchar(10) NOT NULL,
-  `tag_id` varchar(255) NOT NULL,
-  `timestamp` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  `charge` decimal(10,2) DEFAULT NULL,
-  `pass_type` enum('home','visitor') NOT NULL,
-  PRIMARY KEY (`pass_id`) USING BTREE,
-  KEY `station_id` (`station_id`) USING BTREE,
-  KEY `tag_id` (`tag_id`) USING BTREE,
-  CONSTRAINT `passes_ibfk_1` FOREIGN KEY (`station_id`) REFERENCES `tollstations` (`station_id`) ON DELETE CASCADE,
-  CONSTRAINT `passes_ibfk_2` FOREIGN KEY (`tag_id`) REFERENCES `vehicletags` (`tag_id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=1001 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- Data exporting was unselected.
-
--- Dumping structure for table tollmanager.tokens
-CREATE TABLE IF NOT EXISTS `tokens` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
-  `token` varchar(255) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `token` (`token`),
-  KEY `user_id` (`user_id`),
-  CONSTRAINT `tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=142 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- Data exporting was unselected.
-
--- Dumping structure for table tollmanager.tollcompanies
 CREATE TABLE IF NOT EXISTS `tollcompanies` (
   `company_id` varchar(5) NOT NULL,
   `company_name` varchar(100) NOT NULL,
@@ -59,9 +18,6 @@ CREATE TABLE IF NOT EXISTS `tollcompanies` (
   PRIMARY KEY (`company_id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Data exporting was unselected.
-
--- Dumping structure for table tollmanager.tollstations
 CREATE TABLE IF NOT EXISTS `tollstations` (
   `station_id` varchar(10) NOT NULL,
   `company_id` varchar(5) NOT NULL,
@@ -83,20 +39,6 @@ CREATE TABLE IF NOT EXISTS `tollstations` (
   CONSTRAINT `tollstations_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `tollcompanies` (`company_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Data exporting was unselected.
-
--- Dumping structure for table tollmanager.users
-CREATE TABLE IF NOT EXISTS `users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `username` varchar(255) NOT NULL,
-  `password_hash` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `username` (`username`)
-) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- Data exporting was unselected.
-
--- Dumping structure for table tollmanager.vehicletags
 CREATE TABLE IF NOT EXISTS `vehicletags` (
   `tag_id` varchar(255) NOT NULL,
   `company_id` varchar(5) NOT NULL,
@@ -105,7 +47,40 @@ CREATE TABLE IF NOT EXISTS `vehicletags` (
   CONSTRAINT `vehicletags_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `tollcompanies` (`company_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- Data exporting was unselected.
+-- Fixed: removed ON UPDATE current_timestamp() to preserve historical pass timestamps
+CREATE TABLE IF NOT EXISTS `passes` (
+  `pass_id` int(11) NOT NULL AUTO_INCREMENT,
+  `station_id` varchar(10) NOT NULL,
+  `tag_id` varchar(255) NOT NULL,
+  `timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  `charge` decimal(10,2) DEFAULT NULL,
+  `pass_type` enum('home','visitor') NOT NULL,
+  PRIMARY KEY (`pass_id`) USING BTREE,
+  KEY `station_id` (`station_id`) USING BTREE,
+  KEY `tag_id` (`tag_id`) USING BTREE,
+  CONSTRAINT `passes_ibfk_1` FOREIGN KEY (`station_id`) REFERENCES `tollstations` (`station_id`) ON DELETE CASCADE,
+  CONSTRAINT `passes_ibfk_2` FOREIGN KEY (`tag_id`) REFERENCES `vehicletags` (`tag_id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Fixed: renamed password_hash to password_hash (kept), but routes must use password_hash consistently
+CREATE TABLE IF NOT EXISTS `users` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `username` varchar(255) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`)
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `tokens` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `token` varchar(255) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `token` (`token`),
+  KEY `user_id` (`user_id`),
+  CONSTRAINT `tokens_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=1 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 /*!40103 SET TIME_ZONE=IFNULL(@OLD_TIME_ZONE, 'system') */;
 /*!40101 SET SQL_MODE=IFNULL(@OLD_SQL_MODE, '') */;

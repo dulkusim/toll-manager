@@ -1,43 +1,45 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../utils/db.config");
-const { Parser } = require("json2csv"); // Βιβλιοθήκη για μετατροπή JSON σε CSV
+const { Parser } = require("json2csv");
+
+// Helper: format a JS Date or DB timestamp string to "YYYY-MM-DD HH:mm"
+function formatTimestamp(value) {
+    const d = new Date(value);
+    const yyyy = d.getFullYear();
+    const MM = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${MM}-${dd} ${hh}:${mm}`;
+}
 
 // GET /tollStationPasses/:tollStationID/:date_from/:date_to
 router.get("/tollStationPasses/:tollStationID?/:date_from?/:date_to?", async (req, res) => {
     const { tollStationID, date_from, date_to } = req.params;
-    const format = req.query.format || "json"; // Default format: JSON
-    const requestTimestamp = new Date().toISOString(); // Χρόνος που έγινε το request
+    const format = req.query.format || "json";
+    const requestTimestamp = formatTimestamp(new Date());
 
-    // 🛑 Validate input: If any parameter is missing, return 400 Bad Request
+    // Validate input
     if (!tollStationID || !date_from || !date_to) {
         return res.status(400).json({ error: "Bad Request", message: "Missing required parameters." });
     }
 
-    // Validate date format (basic check)
     const dateRegex = /^\d{8}$/;
     if (!dateRegex.test(date_from) || !dateRegex.test(date_to)) {
         return res.status(400).json({ error: "Bad Request", message: "Invalid date format. Use YYYYMMDD." });
     }
 
-    // Placeholder for authentication (if needed in the future)
-    // if (!req.user) {
-    //    return res.status(401).json({ error: "Not Authorized", message: "Authentication required." });
-    // }
-
-    // Convert dates to SQL-compatible format
     const startDate = `${date_from.substring(0,4)}-${date_from.substring(4,6)}-${date_from.substring(6,8)} 00:00:00`;
     const endDate = `${date_to.substring(0,4)}-${date_to.substring(4,6)}-${date_to.substring(6,8)} 23:59:59`;
 
     try {
-        
         // Validate tollStationID
         const [stationCheck] = await pool.query(
             `SELECT station_id FROM tollstations WHERE station_id = ?`,
             [tollStationID]
         );
 
-        // If tollStationID is invalid, return 404 Not Found
         if (stationCheck.length === 0) {
             return res.status(400).json({ error: "Bad Parameter", message: "Toll station ID is invalid." });
         }
@@ -56,39 +58,40 @@ router.get("/tollStationPasses/:tollStationID?/:date_from?/:date_to?", async (re
             [tollStationID, startDate, endDate]
         );
 
-        // ✅ 204 No Content if no records found
         if (results.length === 0) {
             return res.status(204).send();
         }
 
-        // ✅ 200 Success - Build response
+        const passList = results.map((row, index) => ({
+            passIndex: index + 1,
+            passID: row.pass_id,
+            timestamp: formatTimestamp(row.timestamp),
+            tagID: row.tag_id,
+            tagProvider: row.tagProvider || "Unknown",
+            passType: row.pass_type,
+            passCharge: parseFloat(row.charge)
+        }));
+
         const response = {
             stationID: tollStationID,
             stationOperator: results[0].stationOperator || "Unknown",
             requestTimestamp: requestTimestamp,
-            periodFrom: startDate,
-            periodTo: endDate,
+            periodFrom: formatTimestamp(new Date(startDate)),
+            periodTo: formatTimestamp(new Date(endDate)),
             nPasses: results.length,
-            passList: results.map((row, index) => ({
-                passIndex: index + 1,
-                passID: row.pass_id,
-                timestamp: row.timestamp,
-                tagID: row.tag_id,
-                tagProvider: row.tagProvider || "Unknown",
-                passType: row.pass_type,
-                passCharge: row.charge
-            }))
+            passList: passList
         };
 
         if (format === "csv") {
             const json2csvParser = new Parser();
-            const csv = json2csvParser.parse(response.passList);
+            const csvData = json2csvParser.parse(passList);
             res.header("Content-Type", "text/csv");
             res.attachment("tollStationPasses.csv");
-            return res.send(csv);
-        } else {
-            res.json(response);
+            return res.send(csvData);
         }
+
+        res.json(response);
+
     } catch (err) {
         console.error("DB Error:", err);
         res.status(500).json({ error: "Internal Server Error", details: err.message });

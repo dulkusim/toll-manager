@@ -3,18 +3,19 @@ const router = express.Router();
 const pool = require("../utils/db.config");
 const fs = require("fs");
 const csv = require("csv-parser");
+const path = require("path");
 
 router.post("/admin/resetstations", async (req, res) => {
     try {
         console.log("🔄 Starting full reset of toll system...");
 
-        // **1. Διαγραφή δεδομένων με τη σωστή σειρά**
+        // 1. Delete data in correct order
         await pool.query("DELETE FROM passes");
         await pool.query("DELETE FROM vehicletags");
         await pool.query("DELETE FROM tollstations");
         await pool.query("DELETE FROM tollcompanies");
 
-        // **2. Επαναφορά Auto Increment**
+        // 2. Reset Auto Increment
         await pool.query("ALTER TABLE passes AUTO_INCREMENT = 1");
         await pool.query("ALTER TABLE vehicletags AUTO_INCREMENT = 1");
         await pool.query("ALTER TABLE tollstations AUTO_INCREMENT = 1");
@@ -22,7 +23,7 @@ router.post("/admin/resetstations", async (req, res) => {
 
         console.log("✅ Deleted all records from tables.");
 
-        // **3. Εισαγωγή νέων δεδομένων**
+        // 3. Re-import data
         console.log("🚀 Importing companies...");
         await importTollCompanies();
 
@@ -40,12 +41,12 @@ router.post("/admin/resetstations", async (req, res) => {
 
 module.exports = router;
 
-// **Εισαγωγή δεδομένων σε tollcompanies**
+// Import data into tollcompanies
 async function importTollCompanies() {
     return new Promise((resolve, reject) => {
         const companies = new Map();
 
-        fs.createReadStream("tollstations2024.csv")
+        fs.createReadStream(path.join(__dirname, "../tollstations2024.csv"))
             .pipe(csv({
                 separator: ",",
                 mapHeaders: ({ header, index }) => {
@@ -86,16 +87,20 @@ async function importTollCompanies() {
                     console.error("❌ Insert error (tollcompanies):", err.message);
                     reject(err);
                 }
+            })
+            .on("error", (err) => {
+                console.error("❌ Stream error (tollcompanies):", err.message);
+                reject(err);
             });
     });
 }
 
-// **Εισαγωγή δεδομένων σε tollstations**
+// Import data into tollstations
 async function importTollStations() {
     return new Promise((resolve, reject) => {
         const stations = [];
 
-        fs.createReadStream("tollstations2024.csv")
+        fs.createReadStream(path.join(__dirname, "../tollstations2024.csv"))
             .pipe(csv({
                 separator: ",",
                 mapHeaders: ({ header, index }) => {
@@ -137,12 +142,22 @@ async function importTollStations() {
                     return;
                 }
 
-                stations.push([station_id, company_id, station_name, position_marker, locality, road, latitude, longitude, email, price1, price2, price3, price4]);
+                stations.push([
+                    station_id, company_id, station_name, position_marker,
+                    locality, road, latitude, longitude, email,
+                    price1, price2, price3, price4
+                ]);
             })
             .on("end", async () => {
                 try {
+                    if (stations.length === 0) {
+                        console.warn("⚠️ No stations found in CSV.");
+                        return resolve();
+                    }
+
                     const query = `
-                        INSERT INTO tollstations (station_id, company_id, station_name, position_marker, locality, road, latitude, longitude, email, price1, price2, price3, price4)
+                        INSERT INTO tollstations 
+                            (station_id, company_id, station_name, position_marker, locality, road, latitude, longitude, email, price1, price2, price3, price4)
                         VALUES ?
                     `;
 
@@ -153,6 +168,10 @@ async function importTollStations() {
                     console.error("❌ Insert error (tollstations):", err.message);
                     reject(err);
                 }
+            })
+            .on("error", (err) => {
+                console.error("❌ Stream error (tollstations):", err.message);
+                reject(err);
             });
     });
 }
